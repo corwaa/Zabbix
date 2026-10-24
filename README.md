@@ -1,4 +1,4 @@
-See article on TrustedSec
+See blog on TrustedSec
 
 # Can you do this with Zabbix?
 
@@ -24,3 +24,18 @@ On a Dutch-language Windows Server the field name is different; check a real 473
 
 ## 2. State check via PowerShell (also catches DCShadow and the hiding trick)
 privgroups.ps1
+
+In the agent config (e.g. zabbix_agent2.d\adpriv.conf):
+
+`Timeout=30`
+`UserParameter=ad.priv.members,powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Zabbix Agent 2\scripts\privgroups.ps1" -Mode members`
+`UserParameter=ad.priv.pgid,powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Zabbix Agent 2\scripts\privgroups.ps1" -Mode pgid`
+
+Create the items as type Text with a 5–15 minute interval; one DC is enough (AD replicates). Triggers:
+
+change(/DC01/ad.priv.members)=1 → High: “Privileged group membership changed”. The history shows old vs. new.
+length(last(/DC01/ad.priv.pgid))>0 → High: “Account with non-standard primaryGroupID”.
+
+The pgid check also catches the deny-read trick: the agent runs as LocalSystem (the DC computer account), so it falls under Everyone, gets $null back, and that falls outside the allowed list.
+
+Two caveats. If you deliberately have accounts with a different primary group (for example for old POSIX/Mac integrations), add that RID to the allowed list, otherwise the trigger will keep firing. And if you want it extra tight, you can also add the output of net group "Domain Admins" /domain, since in the research that was the only method that correctly showed the hidden membership.
